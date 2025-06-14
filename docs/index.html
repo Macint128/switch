@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AirClone" />
+  <title>AirClone</title>
+  <link rel="apple-touch-icon" href="icon.png" />
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: #121212;
+      color: white;
+      text-align: center;
+      padding: 1em;
+    }
+    button, input[type="range"] {
+      margin: 10px;
+    }
+    button {
+      padding: 1em 2em;
+      font-size: 1.2em;
+      border: none;
+      border-radius: 10px;
+      background: #1e88e5;
+      color: white;
+      cursor: pointer;
+    }
+    #log {
+      max-height: 200px;
+      overflow-y: auto;
+      width: 90%;
+      background: #1e1e1e;
+      border-radius: 10px;
+      padding: 1em;
+      font-size: 0.9em;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <h1>AirClone</h1>
+  <div id="hostUI" style="display:none">
+    <h2>호스트 화면</h2>
+    <canvas id="qrcode"></canvas>
+    <div id="log"></div>
+  </div>
+
+  <div id="controllerUI" style="display:none">
+    <h2>컨트롤러</h2>
+    <button onclick="send('A')">버튼 A</button>
+    <button onclick="send('B')">버튼 B</button>
+    <p>슬라이더: <span id="sliderVal">50</span></p>
+    <input type="range" min="0" max="100" value="50" onchange="sendSlider(this.value)" />
+    <p id="accData">가속도: 없음</p>
+  </div>
+
+  <script>
+    const role = new URLSearchParams(location.search).get("role");
+    const hostURL = location.origin + "?role=controller";
+    const ws = new WebSocket("wss://your-render-websocket-url.onrender.com"); // ✨ 여기를 변경하세요!
+
+    const log = (msg) => {
+      const logDiv = document.getElementById("log");
+      logDiv.innerHTML += msg + "<br>";
+      logDiv.scrollTop = logDiv.scrollHeight;
+    };
+
+    ws.onopen = () => {
+      if (role === "controller") {
+        document.getElementById("controllerUI").style.display = "block";
+        console.log("컨트롤러 연결됨");
+      } else if (role === "host") {
+        document.getElementById("hostUI").style.display = "block";
+        console.log("호스트 연결됨");
+        QRCode.toCanvas(document.getElementById("qrcode"), hostURL, { width: 200 });
+      }
+    };
+
+    ws.onmessage = (e) => {
+      if (role === "host") log("📨 " + e.data);
+    };
+
+    function send(data) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "button", data }));
+      }
+    }
+
+    function sendSlider(val) {
+      document.getElementById("sliderVal").innerText = val;
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "slider", data: val }));
+      }
+    }
+
+    // 가속도 센서
+    if (window.DeviceMotionEvent && role === "controller") {
+      window.addEventListener("devicemotion", (e) => {
+        const acc = e.accelerationIncludingGravity;
+        const payload = {
+          type: "accel",
+          data: { x: acc.x.toFixed(2), y: acc.y.toFixed(2), z: acc.z.toFixed(2) }
+        };
+        document.getElementById("accData").innerText =
+          `가속도: x=${payload.data.x}, y=${payload.data.y}, z=${payload.data.z}`;
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(payload));
+        }
+      });
+    }
+  </script>
+</body>
+</html>
